@@ -103,6 +103,27 @@ scp report.tar.gz 12D3KooW....bunyip:/srv/
 rsync -av --rsh=ssh ./site/ 12D3KooW....bunyip:/var/www/
 ```
 
+### Tunnels and SOCKS
+
+`--allow-forwarding` on the server turns on `ssh -L` and `ssh -D`:
+
+```sh
+# reach a database that only listens on the server's loopback
+ssh -F ~/.ssh/config -N -L 5432:127.0.0.1:5432 12D3KooW....bunyip
+
+# or send a browser's traffic out through the server
+ssh -N -D 1080 12D3KooW....bunyip
+curl --socks5-hostname 127.0.0.1:1080 http://internal.vpc.local/
+```
+
+`-D` needs nothing extra: the ssh client speaks SOCKS itself and asks the
+server to open ordinary forwarded channels, so `--socks5-hostname` resolves
+DNS on the server side — which is usually why you want it.
+
+A refused connection comes back as `connect failed` and a policy denial as
+`administratively prohibited`, so the two are easy to tell apart. `-R` is not
+implemented.
+
 ### scp and sftp
 
 `rsync` and `scp -O` need nothing extra — they run over `exec`. Modern `scp`
@@ -149,8 +170,11 @@ RUST_LOG=bunyip=debug ssh -o ProxyCommand="bunyip-proxy %n" <peer-id>   # logs g
 - **No privilege separation yet.** `bunyipd` runs as one user and gives that
   user's shell to anyone who authenticates. Do not run it as root. Running as
   root with a per-session `setuid` is future work, not a quiet omission.
-- **Not implemented:** port forwarding, X11, agent forwarding, sftp
-  subsystems. `scp` and `rsync` only need `exec`, so they work.
+- **Forwarding is off by default.** `--allow-forwarding` lets an
+  authenticated client open a TCP connection to anything this host can reach,
+  including services bound to `127.0.0.1` and the rest of its private network.
+  That is the point of `-L`/`-D`, and the reason it is opt-in.
+- **Not implemented:** remote forwarding (`-R`), X11 and agent forwarding.
 
 ## License
 

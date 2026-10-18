@@ -11,7 +11,7 @@ use std::sync::Arc;
 use pty_process::{OwnedReadPty, OwnedWritePty, Size};
 use russh::keys::PublicKey;
 use russh::server::{Auth, ChannelOpenHandle, Msg, Session};
-use russh::{Channel, ChannelId, Pty};
+use russh::{Channel, ChannelId, ChannelOpenFailure, Pty};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
 use tokio::sync::mpsc;
@@ -23,6 +23,9 @@ pub struct Policy {
     pub authorized_keys: Vec<PublicKey>,
     /// Backs the `sftp` subsystem, which modern `scp` and `sftp` both use.
     pub sftp_server: Option<PathBuf>,
+    /// Allow `ssh -L` and `ssh -D`, which let the client reach anything this
+    /// host can reach. Off unless asked for.
+    pub allow_forwarding: bool,
 }
 
 /// Where distributions put OpenSSH's sftp server.
@@ -242,6 +245,58 @@ impl russh::server::Handler for SshSession {
         self.start(id, session, Some(command)).await
     }
 
+    /// Outbound forwarding: `ssh -L` and, since the client does SOCKS itself,
+    /// `ssh -D`. Dropping `reply` without accepting rejects the channel.
+    #[allow(clippy::too_many_arguments)]
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        originator_address: &str,
+        originator_port: u32,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let target = format!("{host_to_connect}:{port_to_connect}");
+        if !self.policy.allow_forwarding {
+            tracing::warn!(peer = %self.peer, %target, "forwarding refused: --allow-forwarding is off");
+            reply
+                .reject(ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        }
+
+        let port = match u16::try_from(port_to_connect) {
+            Ok(port) => port,
+            Err(_) => {
+                tracing::warn!(peer = %self.peer, %target, "forwarding refused: port out of range");
+                reply.reject(ChannelOpenFailure::ConnectFailed).await;
+                return Ok(());
+            }
+        };
+
+        match tokio::net::TcpStream::connect((host_to_connect, port)).await {
+            Ok(tcp) => {
+                tracing::info!(
+                    peer = %self.peer, %target,
+                    origin = %format!("{originator_address}:{originator_port}"),
+                    "forwarding"
+                );
+                reply.accept().await;
+                let peer = self.peer;
+                tokio::spawn(async move { report(peer, forward(channel, tcp).await) });
+            }
+            Err(e) => {
+                tracing::warn!(peer = %self.peer, %target, error = %e, "forwarding failed to connect");
+                // Say *why*, so a SOCKS client reports a refused connection
+                // rather than a policy denial.
+                reply.reject(ChannelOpenFailure::ConnectFailed).await;
+            }
+        }
+        Ok(())
+    }
+
     /// Only `sftp`, and only by handing over to the system's sftp server.
     async fn subsystem_request(
         &mut self,
@@ -377,6 +432,49 @@ async fn pump_piped(channel: Channel<Msg>, mut child: Child, io: Piped) -> anyho
 
     to_client_err.flush().await?;
     finish(&client_w, &mut to_client, &mut child).await
+}
+
+/// Splice a forwarded channel onto a TCP connection, half-closing each
+/// direction as it ends so protocols that signal with EOF still work.
+async fn forward(channel: Channel<Msg>, tcp: tokio::net::TcpStream) -> anyhow::Result<()> {
+    let (mut client_r, client_w) = channel.split();
+    let mut from_client = client_r.make_reader();
+    let mut to_client = client_w.make_writer();
+    let (mut tcp_r, mut tcp_w) = tcp.into_split();
+
+    let mut inbound = vec![0u8; BUF];
+    let mut outbound = vec![0u8; BUF];
+    let (mut tcp_open, mut client_open) = (true, true);
+
+    while tcp_open || client_open {
+        tokio::select! {
+            n = tcp_r.read(&mut inbound), if tcp_open => match n {
+                Ok(0) | Err(_) => {
+                    tcp_open = false;
+                    to_client.flush().await?;
+                    let _ = client_w.eof().await;
+                }
+                Ok(n) => {
+                    to_client.write_all(&inbound[..n]).await?;
+                    to_client.flush().await?;
+                }
+            },
+            n = from_client.read(&mut outbound), if client_open => match n {
+                Ok(0) | Err(_) => {
+                    client_open = false;
+                    let _ = tcp_w.shutdown().await;
+                }
+                Ok(n) => {
+                    if tcp_w.write_all(&outbound[..n]).await.is_err() {
+                        client_open = false;
+                    }
+                }
+            },
+        }
+    }
+
+    let _ = client_w.close().await;
+    Ok(())
 }
 
 /// Report the exit status and close the channel.

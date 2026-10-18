@@ -36,6 +36,11 @@ struct Args {
     #[arg(long, value_name = "PATH")]
     sftp_server: Option<std::path::PathBuf>,
 
+    /// Allow `ssh -L` and `ssh -D`. This lets an authenticated client reach
+    /// anything this host can reach, so it is off by default.
+    #[arg(long)]
+    allow_forwarding: bool,
+
     /// Peer ID allowed to open a stream (repeatable).
     #[arg(long = "allow-peer", value_name = "PEER_ID")]
     allow_peer: Vec<PeerId>,
@@ -132,9 +137,13 @@ async fn main() -> Result<()> {
         Some(path) => tracing::info!(path = %path.display(), "sftp subsystem enabled"),
         None => tracing::info!("no sftp-server found: plain `scp` will fail, use `scp -O`"),
     }
+    if args.allow_forwarding {
+        tracing::info!("TCP forwarding enabled: clients can reach this host's network");
+    }
     let policy = Arc::new(Policy {
         authorized_keys,
         sftp_server,
+        allow_forwarding: args.allow_forwarding,
     });
 
     tokio::spawn(serve(incoming, ssh_config, policy, allowed));
