@@ -4,12 +4,12 @@
 
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bunyip::p2p::{self, P2pOpts};
 use bunyip::{dial, keys};
 use clap::Parser;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
-use libp2p::{Multiaddr, PeerId};
+use libp2p::Multiaddr;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 #[derive(Parser, Debug)]
@@ -54,11 +54,7 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    let peer: PeerId = args
-        .peer
-        .trim_end_matches(".bunyip")
-        .parse()
-        .with_context(|| format!("{:?} is not a peer ID", args.peer))?;
+    let peer = dial::parse_peer(&args.peer)?;
 
     let keypair = keys::load_or_create(&keys::expand(&args.key))?;
     let (mut swarm, mut control) = p2p::build(keypair, &args.p2p)?;

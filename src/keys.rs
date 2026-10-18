@@ -89,3 +89,72 @@ pub fn expand(path: &str) -> PathBuf {
         None => PathBuf::from(path),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_resolves_a_leading_tilde() {
+        std::env::set_var("HOME", "/home/someone");
+        assert_eq!(
+            expand("~/.bunyip/node_key"),
+            PathBuf::from("/home/someone/.bunyip/node_key")
+        );
+        assert_eq!(expand("/etc/bunyip/key"), PathBuf::from("/etc/bunyip/key"));
+        assert_eq!(expand("relative/key"), PathBuf::from("relative/key"));
+    }
+
+    #[test]
+    fn node_key_round_trips_and_pins_the_host_key() {
+        let dir = std::env::temp_dir().join(format!("bunyip-keys-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("node_key");
+
+        let first = load_or_create(&path).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap().len(), 32);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        // Reloading gives the same peer ID, and the SSH host key the `ssh`
+        // client pins is derived from that same seed.
+        let again = load_or_create(&path).unwrap();
+        assert_eq!(first.public().to_peer_id(), again.public().to_peer_id());
+        assert_eq!(
+            ssh_host_key(&first)
+                .unwrap()
+                .public_key()
+                .fingerprint(russh::keys::ssh_key::HashAlg::Sha256),
+            ssh_host_key(&again)
+                .unwrap()
+                .public_key()
+                .fingerprint(russh::keys::ssh_key::HashAlg::Sha256)
+        );
+
+        std::fs::write(&path, b"too short").unwrap();
+        assert!(load_or_create(&path).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn allowed_peers_skips_comments_and_blank_lines() {
+        let dir = std::env::temp_dir().join(format!("bunyip-peers-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("allowed_peers");
+        std::fs::write(
+            &path,
+            "# the laptop\n\
+             12D3KooWFyTnEFq5oKMbTHrvdYZkxVBuqFJvgqSjpVwHmwFL8BQX\n\
+             \n\
+             12D3KooWH3uVF6wv47WnArKHk5p6cXgnDKepVbZupWjDDVoKT4WD # the CI box\n",
+        )
+        .unwrap();
+        assert_eq!(load_allowed_peers(&path).unwrap().len(), 2);
+
+        std::fs::write(&path, "not-a-peer-id\n").unwrap();
+        assert!(load_allowed_peers(&path).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

@@ -8,12 +8,20 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId, Swarm};
 use libp2p_stream::{Control, OpenStreamError};
 
 use crate::p2p::{Behaviour, PROTOCOL};
+
+/// Parse a target as ssh hands it to us: a bare peer ID, or one with the
+/// `.bunyip` suffix that lets `~/.ssh/config` patterns match.
+pub fn parse_peer(target: &str) -> Result<PeerId> {
+    let bare = target.strip_suffix(".bunyip").unwrap_or(target);
+    bare.parse()
+        .with_context(|| format!("{target:?} is not a peer ID"))
+}
 
 /// Seed the swarm with every address we might reach `peer` at.
 pub fn prepare(
@@ -88,4 +96,54 @@ pub fn known_addrs(path: &Path, peer: &PeerId) -> Vec<Multiaddr> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "12D3KooWFyTnEFq5oKMbTHrvdYZkxVBuqFJvgqSjpVwHmwFL8BQX";
+
+    #[test]
+    fn peer_id_parses_bare_and_suffixed() {
+        let expected: PeerId = ID.parse().unwrap();
+        assert_eq!(parse_peer(ID).unwrap(), expected);
+        assert_eq!(parse_peer(&format!("{ID}.bunyip")).unwrap(), expected);
+    }
+
+    #[test]
+    fn peer_id_is_case_sensitive() {
+        assert!(parse_peer(&ID.to_lowercase()).is_err());
+        assert!(parse_peer("").is_err());
+    }
+
+    #[test]
+    fn known_addrs_picks_the_matching_line_and_skips_junk() {
+        let dir = std::env::temp_dir().join(format!("bunyip-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("known_peers");
+        std::fs::write(
+            &path,
+            format!(
+                "# a comment\n\
+                 {ID} /ip4/198.51.100.4/udp/4001/quic-v1 /ip4/198.51.100.4/tcp/4001\n\
+                 {ID} not-a-multiaddr\n\
+                 12D3KooWH3uVF6wv47WnArKHk5p6cXgnDKepVbZupWjDDVoKT4WD /ip4/203.0.113.9/tcp/4001\n"
+            ),
+        )
+        .unwrap();
+
+        let peer: PeerId = ID.parse().unwrap();
+        let addrs = known_addrs(&path, &peer);
+        assert_eq!(
+            addrs.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
+            vec![
+                "/ip4/198.51.100.4/udp/4001/quic-v1".to_string(),
+                "/ip4/198.51.100.4/tcp/4001".to_string(),
+            ]
+        );
+
+        assert!(known_addrs(&dir.join("nope"), &peer).is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

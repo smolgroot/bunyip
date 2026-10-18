@@ -15,7 +15,28 @@ Transports are QUIC (TLS 1.3) first and TCP + Noise + Yamux as a fallback.
 AutoNAT tells a host whether it is publicly reachable; circuit relays plus
 DCUtR hole punching get you in when it is not.
 
-## Build
+## Install
+
+Prebuilt tarballs for linux and macOS, x86_64 and arm64, are attached to each
+[release](https://github.com/smolgroot/bunyip/releases), with checksums:
+
+```sh
+tar xzf bunyip-0.1.0-x86_64-unknown-linux-gnu.tar.gz
+sudo install -m755 bunyip-0.1.0-*/bunyip{d,-proxy} /usr/local/bin/
+```
+
+A container image is published to GitHub Packages for `linux/amd64` and
+`linux/arm64`. Host networking, so QUIC and hole punching see real addresses:
+
+```sh
+docker run -d --name bunyipd --network host \
+  -v bunyip-state:/home/bunyip/.bunyip \
+  -v ~/.ssh/authorized_keys:/home/bunyip/.ssh/authorized_keys:ro \
+  ghcr.io/smolgroot/bunyip:0.1.0 --allow-any-peer
+docker logs bunyipd        # prints the peer ID
+```
+
+Or from source:
 
 ```sh
 cargo build --release
@@ -175,6 +196,28 @@ RUST_LOG=bunyip=debug ssh -o ProxyCommand="bunyip-proxy %n" <peer-id>   # logs g
   including services bound to `127.0.0.1` and the rest of its private network.
   That is the point of `-L`/`-D`, and the reason it is opt-in.
 - **Not implemented:** remote forwarding (`-R`), X11 and agent forwarding.
+
+## Releasing
+
+CI runs `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test` on
+every push and pull request, on linux and macOS.
+
+Pushing a `v*` tag builds release binaries on native runners for each of the
+four targets, attaches the tarballs and their checksums to a GitHub release
+with that version's [changelog](CHANGELOG.md) section as the body, and pushes
+the container image to `ghcr.io/smolgroot/bunyip`:
+
+```sh
+# move the Unreleased entries under a new heading in CHANGELOG.md, bump
+# Cargo.toml, then
+git commit -am "Release 0.2.0"
+git tag -a v0.2.0 -m "bunyip 0.2.0"
+git push origin master v0.2.0
+```
+
+The tag must match the changelog heading (`v0.2.0` -> `## [0.2.0]`), or the
+release body falls back to pointing at the file. `workflow_dispatch` rebuilds
+an existing tag if a release needs redoing.
 
 ## License
 
