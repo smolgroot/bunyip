@@ -1,0 +1,37 @@
+[package]
+name = "bunyip"
+version = "0.1.0"
+edition = "2021"
+description = "SSH over libp2p: dial hosts by peer ID, through NAT, without an IP"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "bunyipd"
+path = "src/bin/bunyipd.rs"
+
+[[bin]]
+name = "bunyip-proxy"
+path = "src/bin/bunyip-proxy.rs"
+
+[dependencies]
+libp2p = { version = "=0.57.0", features = [
+    "tokio", "quic", "tcp", "noise", "yamux", "dns",
+    "identify", "ping", "autonat", "dcutr", "relay", "kad",
+    "ed25519", "macros",
+] }
+libp2p-stream = "0.5.0-alpha"
+russh = "0.64"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "signal", "process", "fs"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+futures = "0.3"
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+pty-process = { version = "0.5", features = ["async"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
