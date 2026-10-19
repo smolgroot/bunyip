@@ -43,7 +43,7 @@ DCUtR hole punching get you in when it is not.
 
 ## Install
 
-Prebuilt tarballs for linux and macOS, x86_64 and arm64, are attached to each
+Prebuilt linux tarballs, x86_64 and arm64, are attached to each
 [release](https://github.com/smolgroot/bunyip/releases), with checksums:
 
 ```sh
@@ -228,8 +228,8 @@ RUST_LOG=bunyip=debug ssh -o ProxyCommand="bunyip-proxy %n" <peer-id>   # logs g
 CI runs `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test` on
 every push and pull request, on linux and macOS.
 
-Pushing a `v*` tag builds release binaries on native runners for each of the
-four targets, attaches the tarballs and their checksums to a GitHub release
+Pushing a `v*` tag builds release binaries on a native runner for each of the
+two linux targets, attaches the tarballs and their checksums to a GitHub release
 with that version's [changelog](CHANGELOG.md) section as the body, and pushes
 the container image to `ghcr.io/smolgroot/bunyip`:
 

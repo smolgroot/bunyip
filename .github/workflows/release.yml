@@ -27,12 +27,6 @@ jobs:
           # Native arm runners; free for public repos.
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
-          # Both on arm64 images: the Intel macos-13 runner is retired and
-          # jobs sent to it sit queued, blocking release and package.
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,22 +37,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - name: Cross-compile settings
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> "$GITHUB_ENV"
       # aws-lc-sys, pulled in by russh, is built from C sources.
       - name: Install build tools
-        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Both binaries are built for this target
-        run: |
-          file target/${{ matrix.target }}/release/bunyipd \
-               target/${{ matrix.target }}/release/bunyip-proxy
-      # Only a native build can be executed here; the cross one is checked above.
       - name: Both binaries start
-        if: matrix.target != 'x86_64-apple-darwin'
         run: |
           ./target/${{ matrix.target }}/release/bunyipd --version
           ./target/${{ matrix.target }}/release/bunyip-proxy --version
