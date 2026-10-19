@@ -17,6 +17,7 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -26,25 +27,38 @@ jobs:
           # Native arm runners; free for public repos.
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-22.04-arm
+          # Both on arm64 images: the Intel macos-13 runner is retired and
+          # jobs sent to it sit queued, blocking release and package.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Cross-compile settings
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> "$GITHUB_ENV"
       # aws-lc-sys, pulled in by russh, is built from C sources.
       - name: Install build tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Both binaries are built for this target
+        run: |
+          file target/${{ matrix.target }}/release/bunyipd \
+               target/${{ matrix.target }}/release/bunyip-proxy
+      # Only a native build can be executed here; the cross one is checked above.
       - name: Both binaries start
+        if: matrix.target != 'x86_64-apple-darwin'
         run: |
           ./target/${{ matrix.target }}/release/bunyipd --version
           ./target/${{ matrix.target }}/release/bunyip-proxy --version
@@ -78,7 +92,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref }}
       - uses: actions/download-artifact@v4
@@ -122,7 +136,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref }}
 
