@@ -14,7 +14,7 @@ ARG TARGETARCH
 LABEL org.opencontainers.image.title="bunyip" \
       org.opencontainers.image.description="SSH over libp2p: dial hosts by peer ID, through NAT, without an IP" \
       org.opencontainers.image.source="https://github.com/smolgroot/bunyip" \
-      org.opencontainers.image.licenses="MIT OR Apache-2.0"
+      org.opencontainers.image.licenses="MIT"
 
 # openssh-sftp-server is what bunyipd hands SFTP channels to; without it
 # `scp -O` still works but modern scp and sftp do not.

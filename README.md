@@ -1,4 +1,21 @@
-# bunyip
+<div align="center">
+  <img src="doc/logo.png" alt="bunyip logo" width="320" />
+
+  <h1>bunyip</h1>
+
+  <p>
+    SSH over P2P: dial a host by peer ID, through NAT, without an IP
+  </p>
+
+  <p>
+    <a href="https://github.com/smolgroot/bunyip/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/smolgroot/bunyip/ci.yml?branch=master&label=CI&color=4e6a5c&labelColor=4e6a5c&logoColor=white" /></a>
+    <a href="https://github.com/smolgroot/bunyip/releases"><img alt="release" src="https://img.shields.io/github/v/release/smolgroot/bunyip?include_prereleases&label=release&color=4e6a5c&labelColor=4e6a5c&logoColor=white" /></a>
+    <a href="https://github.com/smolgroot/bunyip/pkgs/container/bunyip"><img alt="container image" src="https://img.shields.io/badge/ghcr.io-bunyip-4e6a5c?labelColor=4e6a5c&logoColor=white" /></a>
+    <a href="#license"><img alt="license" src="https://img.shields.io/badge/license-MIT-4e6a5c?labelColor=4e6a5c&logoColor=white" /></a>
+  </p>
+</div>
+
+<hr />
 
 SSH over [libp2p](https://libp2p.io). A host is addressed by its **peer ID**
 instead of an IP, so you can reach a VPS that changed address or a preprod box
@@ -14,6 +31,15 @@ Two small binaries:
 Transports are QUIC (TLS 1.3) first and TCP + Noise + Yamux as a fallback.
 AutoNAT tells a host whether it is publicly reachable; circuit relays plus
 DCUtR hole punching get you in when it is not.
+
+## Contents
+
+- [Install](#install)
+- [Server](#server) — [two gates](#two-gates-not-one) · [behind NAT](#behind-nat) · [systemd](#systemd)
+- [Client](#client) — [tunnels and SOCKS](#tunnels-and-socks) · [scp and sftp](#scp-and-sftp) · [peer ID to connection](#how-a-peer-id-becomes-a-connection)
+- [What you are trusting](#what-you-are-trusting)
+- [Releasing](#releasing)
+- [License](#license)
 
 ## Install
 
@@ -221,4 +247,4 @@ an existing tag if a release needs redoing.
 
 ## License
 
-MIT OR Apache-2.0
+MIT. See [LICENSE.md](LICENSE.md).
