@@ -32,6 +32,7 @@ pty-process = { version = "0.5", features = ["async"] }
 
 [profile.release]
 strip = true
+opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
